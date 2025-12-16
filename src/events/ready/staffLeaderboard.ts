@@ -3,8 +3,8 @@ import { IEvent } from '../../core/IEvent';
 import { CustomClient, UserData } from '../../types';
 import { staffConfig } from '../../utils/StaffLogic';
 
-const staffLeaderboard: IEvent<'ready'> = {
-    name: 'ready',
+const staffLeaderboard: IEvent<'clientReady'> = {
+    name: 'clientReady',
     once: true,
     execute: async (_discordClient: Client, client: CustomClient) => {
         
