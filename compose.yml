@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  staff-rep-bot:
+    build: .
+    container_name: staff-rep-bot
+    restart: unless-stopped
+    environment:
+      # Discord Bot Configuration
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+      CLIENT_ID: ${CLIENT_ID}
+      GUILD_ID: ${GUILD_ID}
+      
+      # Database Configuration
+      DB_TYPE: SQLITE
+      SQLITE_PATH: /app/data/staffrep.sqlite
+      
+      # Node Environment
+      NODE_ENV: production
+    volumes:
+      # Persist SQLite database
+      - ./data:/app/data
+      # Persist error logs
+      - ./logs:/app/.logs
+    # Optional: Add logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: MongoDB service if you want to use MongoDB instead
+  # Uncomment this section and update environment variables if needed
+  # mongodb:
+  #   image: mongo:7
+  #   container_name: staff-rep-mongodb
+  #   restart: unless-stopped
+  #   environment:
+  #     MONGO_INITDB_ROOT_USERNAME: admin
+  #     MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #   ports:
+  #     - "27017:27017"
+
+# volumes:
+#   mongodb_data:
