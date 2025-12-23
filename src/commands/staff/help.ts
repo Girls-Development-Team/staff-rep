@@ -1,3 +1,4 @@
+// src/commands/misc/help.ts
 import { 
     ApplicationCommandOptionType, 
     CommandInteraction, 
@@ -20,38 +21,42 @@ const helpCommand: IApplicationCommand = {
 
     async execute(interaction: CommandInteraction, client: CustomClient) {
         if (!interaction.isChatInputCommand()) return;
+
+        await interaction.deferReply();
+
         const commandList: string[] = [];
         
         client.commands.forEach((cmd) => {
-    const data = cmd.data as any;
-    const cmdName = data.name;
-    const cmdDesc = data.description;
-    if (!data.options || data.options.length === 0) {
-        commandList.push(`**/${cmdName}**\n└ ${cmdDesc}`);
-    } else {
-        let hasSubcommands = false;
-        data.options.forEach((opt: any) => {
-            if (opt.type === ApplicationCommandOptionType.Subcommand) {
-                hasSubcommands = true;
-                commandList.push(`**/${cmdName} ${opt.name}**\n└ ${opt.description}`);
-            } else if (opt.type === ApplicationCommandOptionType.SubcommandGroup) {
-                hasSubcommands = true;
-                opt.options?.forEach((subOpt: any) => {
-                    commandList.push(`**/${cmdName} ${opt.name} ${subOpt.name}**\n└ ${subOpt.description}`);
+            const data = cmd.data as any;
+            const cmdName = data.name;
+            const cmdDesc = data.description;
+            
+            if (!data.options || data.options.length === 0) {
+                commandList.push(`**/${cmdName}**\n└ ${cmdDesc}`);
+            } else {
+                let hasSubcommands = false;
+                data.options.forEach((opt: any) => {
+                    if (opt.type === ApplicationCommandOptionType.Subcommand) {
+                        hasSubcommands = true;
+                        commandList.push(`**/${cmdName} ${opt.name}**\n└ ${opt.description}`);
+                    } else if (opt.type === ApplicationCommandOptionType.SubcommandGroup) {
+                        hasSubcommands = true;
+                        opt.options?.forEach((subOpt: any) => {
+                            commandList.push(`**/${cmdName} ${opt.name} ${subOpt.name}**\n└ ${subOpt.description}`);
+                        });
+                    }
                 });
+                if (!hasSubcommands) {
+                    commandList.push(`**/${cmdName}**\n└ ${cmdDesc}`);
+                }
             }
         });
-        if (!hasSubcommands) {
-            commandList.push(`**/${cmdName}**\n└ ${cmdDesc}`);
-        }
-    }
-});
 
         const totalPages = Math.ceil(commandList.length / COMMANDS_PER_PAGE);
         const page = 0;
 
         const embed = new EmbedBuilder()
-            .setTitle('📖 Available Commands')
+            .setTitle(`📖 Available Commands (${commandList.length})`)
             .setDescription(commandList.slice(page * COMMANDS_PER_PAGE, (page + 1) * COMMANDS_PER_PAGE).join('\n\n'))
             .setFooter({ text: `Page ${page + 1} of ${totalPages}` })
             .setColor(0x5865F2);
@@ -69,7 +74,7 @@ const helpCommand: IApplicationCommand = {
                 .setDisabled(totalPages <= 1)
         );
 
-        await interaction.reply({ embeds: [embed], components: [row] });
+        await interaction.editReply({ embeds: [embed], components: [row] });
     },
 };
 

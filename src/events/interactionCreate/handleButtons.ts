@@ -1,7 +1,18 @@
-import { Interaction, GuildMember, TextChannel, EmbedBuilder } from 'discord.js';
+import { 
+    Interaction, 
+    GuildMember, 
+    TextChannel, 
+    EmbedBuilder, 
+    ApplicationCommandOptionType, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle 
+} from 'discord.js';
 import { IEvent } from '../../core/IEvent';
 import { CustomClient, UserData } from '../../types';
 import { StaffLogic, staffConfig } from '../../utils/StaffLogic';
+
+const COMMANDS_PER_PAGE = 5;
 
 const handleButtons: IEvent<'interactionCreate'> = {
     name: 'interactionCreate',
@@ -9,13 +20,81 @@ const handleButtons: IEvent<'interactionCreate'> = {
         if (!interaction.isButton()) return;
         const { customId } = interaction;
 
-        // 1. Authorization Check
+        // --- 1. HELP PAGE LOGIC ---
+        if (customId.startsWith('help_')) {
+            // Acknowledge immediately to prevent 3-second timeout
+            await interaction.deferUpdate();
+
+            const [action, currentPageStr] = customId.split(':');
+            let page = parseInt(currentPageStr);
+            
+            // Calculate new page target
+            if (action === 'help_next') page++;
+            if (action === 'help_prev') page--;
+
+            const commandList: string[] = [];
+            client.commands.forEach((cmd) => {
+                const data = cmd.data as any;
+                const cmdName = data.name;
+                const cmdDesc = data.description;
+
+                if (!data.options || data.options.length === 0) {
+                    commandList.push(`**/${cmdName}**\n└ ${cmdDesc}`);
+                } else {
+                    let hasSubcommands = false;
+                    data.options.forEach((opt: any) => {
+                        if (opt.type === ApplicationCommandOptionType.Subcommand) {
+                            hasSubcommands = true;
+                            commandList.push(`**/${cmdName} ${opt.name}**\n└ ${opt.description}`);
+                        } else if (opt.type === ApplicationCommandOptionType.SubcommandGroup) {
+                            hasSubcommands = true;
+                            opt.options?.forEach((subOpt: any) => {
+                                commandList.push(`**/${cmdName} ${opt.name} ${subOpt.name}**\n└ ${subOpt.description}`);
+                            });
+                        }
+                    });
+                    if (!hasSubcommands) commandList.push(`**/${cmdName}**\n└ ${cmdDesc}`);
+                }
+            });
+
+            const totalPages = Math.ceil(commandList.length / COMMANDS_PER_PAGE);
+            
+            // Boundary safety to prevent index out of bounds
+            if (page < 0) page = 0;
+            if (page >= totalPages) page = totalPages - 1;
+
+            const embed = new EmbedBuilder()
+                // FIXED: Shows total commands count dynamically in the title
+                .setTitle(`📖 Available Commands (${commandList.length})`)
+                .setDescription(commandList.slice(page * COMMANDS_PER_PAGE, (page + 1) * COMMANDS_PER_PAGE).join('\n\n'))
+                .setFooter({ text: `Page ${page + 1} of ${totalPages} • Powered by ${client.user?.username}` })
+                .setColor(0x5865F2);
+
+            // UPDATED: The customId correctly carries the 'page' index the user has just moved TO.
+            const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`help_prev:${page}`)
+                    .setLabel('Previous')
+                    .setStyle(ButtonStyle.Secondary)
+                    .setDisabled(page === 0),
+                new ButtonBuilder()
+                    .setCustomId(`help_next:${page}`)
+                    .setLabel('Next')
+                    .setStyle(ButtonStyle.Primary)
+                    .setDisabled(page >= totalPages - 1)
+            );
+
+            await interaction.editReply({ embeds: [embed], components: [row] });
+            return; 
+        }
+
+        // --- 2. Authorization Check (Only for Staff Management Buttons) ---
         if (!StaffLogic.isAuthorized(interaction.member as GuildMember)) {
             await interaction.reply({ content: "❌ You are not authorized to manage staff requests.", ephemeral: true });
             return;
         }
 
-        // 2. Defer (Ephemeral)
+        // --- 3. Defer (Ephemeral) for Staff Buttons ---
         await interaction.deferReply({ ephemeral: true });
 
         // --- PROMOTION / DEMOTION LOGIC ---
@@ -30,9 +109,7 @@ const handleButtons: IEvent<'interactionCreate'> = {
 
             const result = await StaffLogic.processRankChange(client, member, type as 'PROMO' | 'DEMO', interaction.user);
             
-            // Cleanup original request
             if (interaction.message.deletable) await interaction.message.delete();
-            
             await interaction.editReply(result);
             
             const logChannel = await client.channels.fetch(staffConfig.channels.log) as TextChannel;
@@ -47,11 +124,8 @@ const handleButtons: IEvent<'interactionCreate'> = {
         // --- LOA LOGIC ---
         else if (customId.startsWith('BTN_LOA_APPROVE_')) {
             const targetId = customId.split('_')[3];
-            
-            // Fetch the target user object to get their avatar for the embed
             const targetUser = await client.users.fetch(targetId).catch(() => null);
             
-            // Try to extract original reason
             let originalReason = "Approved by Management";
             if (interaction.message.embeds.length > 0) {
                 const fields = interaction.message.embeds[0].fields;
@@ -65,18 +139,15 @@ const handleButtons: IEvent<'interactionCreate'> = {
                 }
             }
 
-            // Update DB
             await client.database.updateUser(targetId, {
                 loaStatus: { isActive: true, since: Date.now(), reason: originalReason }
             });
 
-            // 1. Remove Buttons (Visual Lock)
             await interaction.message.edit({ components: [] });
 
-            // 2. Send PROFESSIONAL REPLY (Matching the Request Style)
             const approvalEmbed = new EmbedBuilder()
                 .setTitle('✅ Formal LOA Approval')
-                .setColor(0x00FF00) // Success Green
+                .setColor(0x00FF00)
                 .setThumbnail(targetUser?.displayAvatarURL() || null)
                 .addFields(
                     { name: '👤 Staff Member', value: `<@${targetId}>`, inline: true },
@@ -91,17 +162,13 @@ const handleButtons: IEvent<'interactionCreate'> = {
                  await interaction.message.reply({ embeds: [approvalEmbed] });
             }
 
-            // 3. Confirm to Manager
             await interaction.editReply(`✅ You approved the LOA for <@${targetId}>.`);
 
-            // 4. DM The User
             if (targetUser) {
                 const dmEmbed = new EmbedBuilder()
                     .setTitle('✅ LOA Request Approved')
-                    .setDescription(`Your Leave of Absence request has been approved by <@${interaction.user.id}>, we wish you a nice break and safe return.`)
-                    .addFields(
-                        { name: 'Reason Logged', value: originalReason },
-                    )
+                    .setDescription(`Your Leave of Absence request has been approved by <@${interaction.user.id}>.`)
+                    .addFields({ name: 'Reason Logged', value: originalReason })
                     .setColor(0x00FF00)
                     .setFooter({ text: 'Use /loa return when you are back!' });
                     
@@ -113,13 +180,11 @@ const handleButtons: IEvent<'interactionCreate'> = {
              const targetId = customId.split('_')[3];
              const targetUser = await client.users.fetch(targetId).catch(() => null);
 
-             // 1. Remove Buttons
              await interaction.message.edit({ components: [] });
              
-             // 2. Send PROFESSIONAL REPLY (Denied)
              const denialEmbed = new EmbedBuilder()
                 .setTitle('⛔ LOA Request Denied')
-                .setColor(0xFF0000) // Red
+                .setColor(0xFF0000)
                 .setThumbnail(targetUser?.displayAvatarURL() || null)
                 .addFields(
                     { name: '👤 Staff Member', value: `<@${targetId}>`, inline: true },
@@ -133,21 +198,15 @@ const handleButtons: IEvent<'interactionCreate'> = {
                  await interaction.message.reply({ embeds: [denialEmbed] });
              }
 
-             // 3. Confirm to Manager
              await interaction.editReply("✅ You denied the request.");
-             
-             // 4. DM User
              if(targetUser) targetUser.send("❌ Your LOA request was **denied** by management.").catch(() => {});
         }
 
-        // --- MASS PROCESS ---
         else if (customId === 'BTN_MASS_PROCESS') {
             const allUsers = await client.database.getLeaderboard('positiveRep', 100);
-            
             const eligible = allUsers.filter((u: UserData) => (u.positiveRep || 0) >= 10 || (u.negativeRep || 0) >= 10);
             
             let report = "Processing Report:\n";
-            
             for (const u of eligible) {
                 const member = await interaction.guild?.members.fetch(u.userId).catch(() => null);
                 if (member) {
@@ -156,7 +215,6 @@ const handleButtons: IEvent<'interactionCreate'> = {
                     report += `${res}\n`;
                 }
             }
-            
             await interaction.editReply(report.substring(0, 2000));
         }
     }
