@@ -21,11 +21,16 @@ const event: IEvent<'interactionCreate'> = {
         const [action, currentPageStr] = interaction.customId.split(':');
         if (!action.startsWith('help_')) return;
 
+        try {
+            await interaction.deferUpdate();
+        } catch (err) {
+            return; 
+        }
+
         let page = parseInt(currentPageStr);
         if (action === 'help_next') page++;
         if (action === 'help_prev') page--;
 
-        // 1. Re-flatten the list using the logic that captures all command types
         const commandList: string[] = [];
         client.commands.forEach((cmd) => {
             const data = cmd.data as any;
@@ -75,7 +80,7 @@ const event: IEvent<'interactionCreate'> = {
                 .setDisabled(page >= totalPages - 1)
         );
 
-        await interaction.update({ embeds: [embed], components: [row] });
+        await interaction.editReply({ embeds: [embed], components: [row] });
     }
 };
 
