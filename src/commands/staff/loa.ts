@@ -48,6 +48,7 @@ const loaCommand: IApplicationCommand = {
 
             const reason = interaction.options.getString('reason', true);
             const mgmtChannel = await client.channels.fetch(staffConfig.channels.management) as TextChannel;
+            const mgmtRoleId = staffConfig.roles.management;
 
             if (!mgmtChannel) {
                 return interaction.editReply("❌ Configuration Error: Management channel not found.");
@@ -78,7 +79,7 @@ const loaCommand: IApplicationCommand = {
                     .setStyle(ButtonStyle.Danger)
             );
             
-            await mgmtChannel.send({ embeds: [embed], components: [row] });
+            await mgmtChannel.send({ content: `<@&${mgmtRoleId}>`, embeds: [embed], components: [row] });
             await interaction.editReply({ 
                 content: "✅ **Request Submitted.** Your LOA request has been sent to management for review." 
             });
