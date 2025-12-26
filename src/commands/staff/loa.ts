@@ -48,7 +48,7 @@ const loaCommand: IApplicationCommand = {
 
             const reason = interaction.options.getString('reason', true);
             const mgmtChannel = await client.channels.fetch(staffConfig.channels.management) as TextChannel;
-            const mgmtRoleId = staffConfig.roles.management;
+            const mgmtRoleId = staffConfig.roles.manager;
 
             if (!mgmtChannel) {
                 return interaction.editReply("❌ Configuration Error: Management channel not found.");
