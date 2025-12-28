@@ -86,6 +86,7 @@ const reputationCommand: IApplicationCommand = {
         const targetId = interaction.options.getString('staff', true);
         const reason = interaction.options.getString('reason', true);
         const executor = interaction.member as GuildMember;
+        const staffRoleIds = staffConfig.roles.staffHerarchy.map((r: any) => r.id);
 
         try {
             if (targetId === interaction.user.id) {
