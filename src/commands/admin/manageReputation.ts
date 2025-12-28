@@ -4,10 +4,6 @@ import { CustomClient } from '../../types';
 import { StaffLogic, staffConfig } from '../../utils/StaffLogic';
 import { errorTracker } from '../../core/errorTracker';
 
-const DEVELOPER_IDS = [
-    '955530199972347935'
-];
-
 const manageReputation: IApplicationCommand = {
     data: {
         name: 'manage_reputation',
@@ -87,18 +83,19 @@ const manageReputation: IApplicationCommand = {
         const reason = interaction.options.getString('reason', true);
         
         const executor = interaction.member as GuildMember;
-        const isDeveloper = DEVELOPER_IDS.includes(interaction.user.id);
 
         try {
             if (targetId === interaction.user.id && !isDeveloper) {
                 return interaction.editReply("❌ **Anti-Abuse:** You cannot edit your own reputation.");
             }
 
-            const staffRoleIds = staffConfig.roles.staffHierarchy.map((r: any) => r.id);
-            const hasStaffRole = executor.roles.cache.hasAny(...staffRoleIds);
+            const isDeveloper = staffConfig.developerIds.includes(interaction.user.id);
+            const isManager = executor.roles.cache.has(staffConfig.roles.manager);
 
-            if (!isDeveloper && !hasStaffRole) {
-                 return interaction.editReply("❌ **Access Denied:** You do not hold a recognized Staff/Management role.");
+            if (!isDeveloper && !isManager) {
+                return interaction.editReply({
+                    content: "❌ **Access Denied:** This command is restricted to **Managers** only."
+                });
             }
 
             const targetMember = await interaction.guild?.members.fetch(targetId).catch(() => null);
