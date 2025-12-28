@@ -12,6 +12,7 @@ import { IApplicationCommand } from '../../core/IApplicationCommand';
 import { CustomClient } from '../../types';
 import { StaffLogic, staffConfig } from '../../utils/StaffLogic';
 import { errorTracker } from '../../core/errorTracker';
+import { roleCache } from '../../utils/RoleCache';
 
 const REPUTATION_ACTIONS = {
     ADD: { value: 'add', label: 'Give Point (Positive)', dbField: 'positiveRep', logType: 'ADD_POS', color: Colors.Green, symbol: '✅' },
@@ -53,27 +54,39 @@ const reputationCommand: IApplicationCommand = {
 
     async autocomplete(interaction: AutocompleteInteraction, client: CustomClient) {
         const focusedValue = interaction.options.getFocused().toLowerCase();
-        const guild = interaction.guild;
-        if (!guild) return;
 
         try {
-            const staffRoleIds = staffConfig.roles.staffHierarchy.map((r: any) => r.id);
+            // Use RoleCache instead of searching guild members (much faster!)
+            const allStaff = roleCache.getAllStaffMembers();
 
-            const searchOptions = { query: focusedValue, limit: 50 };
-            const members = await guild.members.search(searchOptions);
+            if (allStaff.size === 0) {
+                // Cache might not be ready yet, fallback to empty
+                await interaction.respond([]);
+                return;
+            }
 
-            const filtered = members.filter(member => 
-                member.roles.cache.hasAny(...staffRoleIds)
-            );
+            // Filter staff by search query
+            const filtered = allStaff.filter(member => {
+                const username = member.user.username.toLowerCase();
+                const nickname = member.nickname?.toLowerCase() || '';
+                return username.includes(focusedValue) || nickname.includes(focusedValue);
+            });
 
-            await interaction.respond(
-                filtered.first(25).map(m => ({ 
-                    name: `${m.user.username} [${m.roles.highest.name}]`, 
-                    value: m.id 
-                }))
-            );
+            // Get the highest role for display
+            const results = filtered.first(25).map(member => {
+                const highestRole = roleCache.getHighestStaffRole(member.id);
+                const roleName = highestRole ? highestRole.roleName : 'Unknown';
+                
+                return { 
+                    name: `${member.user.username} [${roleName}]`, 
+                    value: member.id 
+                };
+            });
+
+            await interaction.respond(results);
         } catch (error) {
-            await interaction.respond([]); 
+            console.error('Autocomplete error:', error);
+            await interaction.respond([]);
         }
     },
 
@@ -86,7 +99,6 @@ const reputationCommand: IApplicationCommand = {
         const targetId = interaction.options.getString('staff', true);
         const reason = interaction.options.getString('reason', true);
         const executor = interaction.member as GuildMember;
-        const staffRoleIds = staffConfig.roles.staffHierarchy.map((r: any) => r.id);
 
         try {
             if (targetId === interaction.user.id) {
@@ -102,13 +114,17 @@ const reputationCommand: IApplicationCommand = {
                 });
             }
 
-            const targetMember = await interaction.guild?.members.fetch(targetId).catch(() => null);
-            if (!targetMember) {
-                return interaction.editReply("❌ **Error:** Member not found in this guild.");
+            // Use RoleCache to check if target is staff (instant!)
+            if (!roleCache.isStaff(targetId)) {
+                return interaction.editReply(`❌ **Invalid Target:** <@${targetId}> does not hold any configured Staff Roles.`);
             }
 
-            if (!targetMember.roles.cache.hasAny(...staffRoleIds)) {
-                return interaction.editReply(`❌ **Invalid Target:** ${targetMember} does not hold any configured Staff Roles.`);
+            // Get the member from cache
+            const allStaff = roleCache.getAllStaffMembers();
+            const targetMember = allStaff.get(targetId);
+
+            if (!targetMember) {
+                return interaction.editReply("❌ **Error:** Member not found in cache.");
             }
 
             const userData = await client.database.getOrCreateUser(targetId);

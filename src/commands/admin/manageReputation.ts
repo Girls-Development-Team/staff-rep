@@ -3,6 +3,7 @@ import { IApplicationCommand } from '../../core/IApplicationCommand';
 import { CustomClient } from '../../types';
 import { StaffLogic, staffConfig } from '../../utils/StaffLogic';
 import { errorTracker } from '../../core/errorTracker';
+import { roleCache } from '../../utils/RoleCache';
 
 const manageReputation: IApplicationCommand = {
     data: {
@@ -56,20 +57,39 @@ const manageReputation: IApplicationCommand = {
 
     async autocomplete(interaction: AutocompleteInteraction, client: CustomClient) {
         const focusedValue = interaction.options.getFocused().toLowerCase();
-        const guild = interaction.guild;
-        if (!guild) return;
 
-        const staffRoleIds = staffConfig.roles.staffHierarchy.map((r: any) => r.id);
-        const members = await guild.members.fetch(); 
-        
-        const filtered = members.filter(member => 
-            member.roles.cache.hasAny(...staffRoleIds) && 
-            (member.user.username.toLowerCase().includes(focusedValue) || member.nickname?.toLowerCase().includes(focusedValue))
-        );
+        try {
+            // Use RoleCache for instant staff member lookup
+            const allStaff = roleCache.getAllStaffMembers();
 
-        await interaction.respond(
-            filtered.first(25).map(m => ({ name: `${m.user.username} [${m.roles.highest.name}]`, value: m.id }))
-        );
+            if (allStaff.size === 0) {
+                await interaction.respond([]);
+                return;
+            }
+
+            // Filter by search query
+            const filtered = allStaff.filter(member => {
+                const username = member.user.username.toLowerCase();
+                const nickname = member.nickname?.toLowerCase() || '';
+                return username.includes(focusedValue) || nickname.includes(focusedValue);
+            });
+
+            // Build response with role info
+            const results = filtered.first(25).map(member => {
+                const highestRole = roleCache.getHighestStaffRole(member.id);
+                const roleName = highestRole ? highestRole.roleName : 'Unknown';
+                
+                return { 
+                    name: `${member.user.username} [${roleName}]`, 
+                    value: member.id 
+                };
+            });
+
+            await interaction.respond(results);
+        } catch (error) {
+            console.error('Autocomplete error:', error);
+            await interaction.respond([]);
+        }
     },
 
     async execute(interaction: CommandInteraction, client: CustomClient) {
@@ -83,7 +103,6 @@ const manageReputation: IApplicationCommand = {
         const reason = interaction.options.getString('reason', true);
         
         const executor = interaction.member as GuildMember;
-        const staffRoleIds = staffConfig.roles.staffHierarchy.map((r: any) => r.id);
 
         try {
             if (targetId === interaction.user.id ) {
@@ -99,11 +118,17 @@ const manageReputation: IApplicationCommand = {
                 });
             }
 
-            const targetMember = await interaction.guild?.members.fetch(targetId).catch(() => null);
-            if (!targetMember) return interaction.editReply("❌ Member not found in guild.");
+            // Use RoleCache for instant validation
+            if (!roleCache.isStaff(targetId)) {
+                return interaction.editReply(`❌ **Invalid Target:** <@${targetId}> is not a recognized staff member.`);
+            }
 
-            if (!targetMember.roles.cache.hasAny(...staffRoleIds)) {
-                return interaction.editReply(`❌ **Invalid Target:** <@${targetMember.id}> is not a recognized staff member.`);
+            // Get member from cache
+            const allStaff = roleCache.getAllStaffMembers();
+            const targetMember = allStaff.get(targetId);
+
+            if (!targetMember) {
+                return interaction.editReply("❌ Member not found in cache.");
             }
 
             const userData = await client.database.getOrCreateUser(targetId);
