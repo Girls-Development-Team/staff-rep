@@ -92,9 +92,13 @@ const reputationCommand: IApplicationCommand = {
                 return interaction.editReply("❌ **Anti-Abuse:** You cannot edit your own reputation.");
             }
 
-            const staffRoleIds = staffConfig.roles.staffHierarchy.map((r: any) => r.id);
-            if (!executor.roles.cache.hasAny(...staffRoleIds)) {
-                 return interaction.editReply("❌ **Access Denied:** You do not hold a recognized Staff/Management role.");
+            const isDeveloper = staffConfig.developerIds.includes(interaction.user.id);
+            const isManager = executor.roles.cache.has(staffConfig.roles.manager);
+
+            if (!isDeveloper && !isManager) {
+                return interaction.editReply({
+                    content: "❌ **Access Denied:** This command is restricted to **Managers** only."
+                });
             }
 
             const targetMember = await interaction.guild?.members.fetch(targetId).catch(() => null);
