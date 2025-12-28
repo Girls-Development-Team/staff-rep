@@ -83,9 +83,10 @@ const manageReputation: IApplicationCommand = {
         const reason = interaction.options.getString('reason', true);
         
         const executor = interaction.member as GuildMember;
+        const staffRoleIds = staffConfig.roles.staffHerarchy.map((r: any) => r.id);
 
         try {
-            if (targetId === interaction.user.id && !isDeveloper) {
+            if (targetId === interaction.user.id ) {
                 return interaction.editReply("❌ **Anti-Abuse:** You cannot edit your own reputation.");
             }
 
