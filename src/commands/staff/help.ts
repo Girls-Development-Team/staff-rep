@@ -58,7 +58,7 @@ const helpCommand: IApplicationCommand = {
         const embed = new EmbedBuilder()
             .setTitle(`📖 Available Commands (${commandList.length})`)
             .setDescription(commandList.slice(page * COMMANDS_PER_PAGE, (page + 1) * COMMANDS_PER_PAGE).join('\n\n'))
-            .setFooter({ text: `Page ${page + 1} of ${totalPages}` })
+            .setFooter({ text: `Page ${page + 1} of ${totalPages} • Powered by ${client.user?.username}` })
             .setColor(0x5865F2);
 
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
